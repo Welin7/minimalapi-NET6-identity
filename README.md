@@ -1,0 +1,1 @@
+# minimalapi-NET6-identity

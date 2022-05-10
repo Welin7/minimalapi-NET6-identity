@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using MinimalApiNet6.Data;
 using MinimalApiNet6.Models;
 using MiniValidation;
+using NetDevPack.Identity.Jwt;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,16 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+//Add the IdentityDbContext configuration in youy program.cs
+builder.Services.AddIdentityEntityFrameworkContextConfiguration(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
+b => b.MigrationsAssembly("MinimalApiNet6")));
+
+//Add identity configuration in configure method of your program.cs
+builder.Services.AddIdentityConfiguration();
+
+//Add jwtconfiguration in configure method of your program.cs
+builder.Services.AddJwtConfiguration(builder.Configuration, "AppSettings");
 
 var app = builder.Build();
 
@@ -19,6 +30,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+//Add useauthconfiguration in configure method of your prgram.cs
+app.UseAuthConfiguration();
 app.UseHttpsRedirection();
 
 app.MapGet("/patient", async (ApplicationDbContext applicationContext) =>

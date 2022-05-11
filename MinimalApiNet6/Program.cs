@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MinimalApiNet6.Data;
 using MinimalApiNet6.Models;
 using MiniValidation;
 using NetDevPack.Identity.Jwt;
+using NetDevPack.Identity.Model;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,9 +33,77 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-//Add useauthconfiguration in configure method of your prgram.cs
-app.UseAuthConfiguration();
+//Add useauthconfiguration in configure method of your program.cs
+//app.UseAuthConfiguration();
+
 app.UseHttpsRedirection();
+
+app.MapPost("/user", async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, RegisterUser registerUser) =>
+{
+    if(registerUser == null)
+        return Results.BadRequest("Uninformed user");
+
+    if (!MiniValidator.TryValidate(registerUser, out var erros))
+        return Results.ValidationProblem(erros);
+
+    var user = new IdentityUser
+    {
+        UserName = registerUser.Email,
+        Email = registerUser.Email,
+        EmailConfirmed = true
+    };
+
+    var result = await userManager.CreateAsync(user, registerUser.Password);
+
+    if (!result.Succeeded)
+        return Results.BadRequest(result.Errors);
+
+    var jwt = new JwtBuilder()
+                  .WithUserManager(userManager)
+                  .WithJwtSettings(appJwtSettings.Value)
+                  .WithEmail(user.Email)
+                  .WithJwtClaims()
+                  .WithUserClaims()
+                  .WithUserRoles()
+                  .BuildUserResponse();
+
+    return Results.Ok(jwt);
+
+}).ProducesValidationProblem()
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status400BadRequest)
+    .WithName("RegisterUser")
+    .WithTags("User");
+
+app.MapPost("/login", async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, LoginUser loginUser) =>
+{
+    if (loginUser == null)
+        return Results.BadRequest("Uninformed user");
+
+    if (!MiniValidator.TryValidate(loginUser, out var erros))
+        return Results.ValidationProblem(erros);
+
+    var result = await signInManager.PasswordSignInAsync(loginUser.Email, loginUser.Password, false, true);
+
+    if (!result.Succeeded)
+        return Results.BadRequest("Username or password is invalid");
+
+    var jwt = new JwtBuilder()
+                  .WithUserManager(userManager)
+                  .WithJwtSettings(appJwtSettings.Value)
+                  .WithEmail(loginUser.Email)
+                  .WithJwtClaims()
+                  .WithUserClaims()
+                  .WithUserRoles()
+                  .BuildUserResponse();
+
+    return Results.Ok(jwt);
+
+}).ProducesValidationProblem()
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status400BadRequest)
+    .WithName("LoginUser")
+    .WithTags("User");
 
 app.MapGet("/patient", async (ApplicationDbContext applicationContext) =>
     await applicationContext.Patients.ToListAsync())
@@ -62,10 +133,10 @@ app.MapPost("/patient", async (ApplicationDbContext applicationContext, Patient 
         : Results.BadRequest("There was a problem saving the record.");
 
 }).ProducesValidationProblem()
-.Produces<Patient>(StatusCodes.Status201Created)
-.Produces<Patient>(StatusCodes.Status400BadRequest)
-.WithName("PostPatient")
-.WithTags("Patient");
+    .Produces<Patient>(StatusCodes.Status201Created)
+    .Produces<Patient>(StatusCodes.Status400BadRequest)
+    .WithName("PostPatient")
+    .WithTags("Patient");
 
 app.MapPut("/patient/{id}", async (Guid id, ApplicationDbContext applicationContext, Patient patient) =>
 {
@@ -83,10 +154,10 @@ app.MapPut("/patient/{id}", async (Guid id, ApplicationDbContext applicationCont
         : Results.BadRequest("There was a problem saving the record.");
 
 }).ProducesValidationProblem()
-.Produces<Patient>(StatusCodes.Status204NoContent)
-.Produces<Patient>(StatusCodes.Status400BadRequest)
-.WithName("PutPatient")
-.WithTags("Patient");
+    .Produces<Patient>(StatusCodes.Status204NoContent)
+    .Produces<Patient>(StatusCodes.Status400BadRequest)
+    .WithName("PutPatient")
+    .WithTags("Patient");
 
 app.MapDelete("/patient/{id}", async (Guid id, ApplicationDbContext applicationContext) =>
 {
@@ -101,9 +172,9 @@ app.MapDelete("/patient/{id}", async (Guid id, ApplicationDbContext applicationC
         : Results.BadRequest("There was a problem delete the record.");
 
 }).Produces(StatusCodes.Status400BadRequest)
-.Produces<Patient>(StatusCodes.Status204NoContent)
-.Produces<Patient>(StatusCodes.Status404NotFound)
-.WithName("DeletePatient")
-.WithTags("Patient");
+    .Produces<Patient>(StatusCodes.Status204NoContent)
+    .Produces<Patient>(StatusCodes.Status404NotFound)
+    .WithName("DeletePatient")
+    .WithTags("Patient");
 
 app.Run();

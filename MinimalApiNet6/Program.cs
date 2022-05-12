@@ -38,7 +38,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "Minimal API Net6",
         Description = "Developed by Welington Dias",
-        Contact = new OpenApiContact { Name = "Welington Dias", Email = "welin7uelf@gail.com" },
+        Contact = new OpenApiContact { Name = "Welington Dias", Email = "welin7uelf@gmail.com" },
         License = new OpenApiLicense { Name = "GIT", Url = new Uri("https://github.com/Welin7") }
     });
 

@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Microsoft.OpenApi.Models;
 using MinimalApiNet6.Data;
 using MinimalApiNet6.Models;
 using MiniValidation;
@@ -24,6 +26,48 @@ builder.Services.AddIdentityConfiguration();
 //Add jwtconfiguration in configure method of your program.cs
 builder.Services.AddJwtConfiguration(builder.Configuration, "AppSettings");
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("DeletePatient", policy => policy.RequireClaim("DeletePatient"));
+});
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Minimal API Net6",
+        Description = "Developed by Welington Dias",
+        Contact = new OpenApiContact { Name = "Welington Dias", Email = "welin7uelf@gail.com" },
+        License = new OpenApiLicense { Name = "GIT", Url = new Uri("https://github.com/Welin7") }
+    });
+
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "Enter JWT token like this: Bearer {your token}",
+        Name = "Authorization",
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            new string[] {}
+        }
+    });
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -34,11 +78,10 @@ if (app.Environment.IsDevelopment())
 }
 
 //Add useauthconfiguration in configure method of your program.cs
-//app.UseAuthConfiguration();
-
+app.UseAuthConfiguration();
 app.UseHttpsRedirection();
 
-app.MapPost("/user", async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, RegisterUser registerUser) =>
+app.MapPost("/user", [AllowAnonymous] async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, RegisterUser registerUser) =>
 {
     if(registerUser == null)
         return Results.BadRequest("Uninformed user");
@@ -75,7 +118,7 @@ app.MapPost("/user", async (SignInManager<IdentityUser> signInManager, UserManag
     .WithName("RegisterUser")
     .WithTags("User");
 
-app.MapPost("/login", async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, LoginUser loginUser) =>
+app.MapPost("/login", [AllowAnonymous] async (SignInManager<IdentityUser> signInManager, UserManager<IdentityUser> userManager, IOptions<AppJwtSettings> appJwtSettings, LoginUser loginUser) =>
 {
     if (loginUser == null)
         return Results.BadRequest("Uninformed user");
@@ -85,6 +128,9 @@ app.MapPost("/login", async (SignInManager<IdentityUser> signInManager, UserMana
 
     var result = await signInManager.PasswordSignInAsync(loginUser.Email, loginUser.Password, false, true);
 
+    if (result.IsLockedOut)
+        return Results.BadRequest("Username is blocked");
+    
     if (!result.Succeeded)
         return Results.BadRequest("Username or password is invalid");
 
@@ -105,7 +151,7 @@ app.MapPost("/login", async (SignInManager<IdentityUser> signInManager, UserMana
     .WithName("LoginUser")
     .WithTags("User");
 
-app.MapGet("/patient", async (ApplicationDbContext applicationContext) =>
+app.MapGet("/patient", [AllowAnonymous] async (ApplicationDbContext applicationContext) =>
     await applicationContext.Patients.ToListAsync())
     .WithName("GetPatient")
     .WithTags("Patient");
@@ -115,12 +161,12 @@ app.MapGet("/patient/{id}", async (Guid id, ApplicationDbContext applicationCont
     is Patient patient
         ? Results.Ok(patient)
         : Results.NotFound())
-    .Produces<Patient>(StatusCodes.Status200OK)
-    .Produces<Patient>(StatusCodes.Status404NotFound)
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status404NotFound)
     .WithName("GetPatientToId")
     .WithTags("Patient");
 
-app.MapPost("/patient", async (ApplicationDbContext applicationContext, Patient patient) =>
+app.MapPost("/patient", [Authorize] async (ApplicationDbContext applicationContext, Patient patient) =>
 {
     if(!MiniValidator.TryValidate(patient, out var erros))
         return Results.ValidationProblem(erros);
@@ -133,12 +179,12 @@ app.MapPost("/patient", async (ApplicationDbContext applicationContext, Patient 
         : Results.BadRequest("There was a problem saving the record.");
 
 }).ProducesValidationProblem()
-    .Produces<Patient>(StatusCodes.Status201Created)
-    .Produces<Patient>(StatusCodes.Status400BadRequest)
+    .Produces(StatusCodes.Status201Created)
+    .Produces(StatusCodes.Status400BadRequest)
     .WithName("PostPatient")
     .WithTags("Patient");
 
-app.MapPut("/patient/{id}", async (Guid id, ApplicationDbContext applicationContext, Patient patient) =>
+app.MapPut("/patient/{id}", [Authorize] async (Guid id, ApplicationDbContext applicationContext, Patient patient) =>
 {
     var selectPatient = await applicationContext.Patients.AsNoTracking<Patient>().FirstOrDefaultAsync(p => p.Id == id);
     if(selectPatient == null)   return Results.NotFound();
@@ -154,12 +200,12 @@ app.MapPut("/patient/{id}", async (Guid id, ApplicationDbContext applicationCont
         : Results.BadRequest("There was a problem saving the record.");
 
 }).ProducesValidationProblem()
-    .Produces<Patient>(StatusCodes.Status204NoContent)
-    .Produces<Patient>(StatusCodes.Status400BadRequest)
+    .Produces(StatusCodes.Status204NoContent)
+    .Produces(StatusCodes.Status400BadRequest)
     .WithName("PutPatient")
     .WithTags("Patient");
 
-app.MapDelete("/patient/{id}", async (Guid id, ApplicationDbContext applicationContext) =>
+app.MapDelete("/patient/{id}", [Authorize] async (Guid id, ApplicationDbContext applicationContext) =>
 {
     var patient = await applicationContext.Patients.FindAsync(id);
     if (patient == null) return Results.NotFound();
@@ -172,8 +218,9 @@ app.MapDelete("/patient/{id}", async (Guid id, ApplicationDbContext applicationC
         : Results.BadRequest("There was a problem delete the record.");
 
 }).Produces(StatusCodes.Status400BadRequest)
-    .Produces<Patient>(StatusCodes.Status204NoContent)
-    .Produces<Patient>(StatusCodes.Status404NotFound)
+    .Produces(StatusCodes.Status204NoContent)
+    .Produces(StatusCodes.Status404NotFound)
+    .RequireAuthorization("DeletePatient")
     .WithName("DeletePatient")
     .WithTags("Patient");
 
